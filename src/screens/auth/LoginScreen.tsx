@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
+import { EyeIcon, EyeSlashIcon, ShieldCheckIcon, SparklesIcon } from '@heroicons/react/24/outline'
 
 interface LoginScreenProps {
   onLogin: (token: string) => void
@@ -21,7 +21,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
 
     try {
       // Simulate authentication
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await new Promise(resolve => setTimeout(resolve, 1200))
       
       if (email === 'admin@seren.com' && password === 'admin123') {
         const mockToken = 'mock-jwt-token-' + Date.now()
@@ -37,81 +37,124 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Seren Residential Dashboard
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Security Control Center & Estate Management
-          </p>
-        </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <label htmlFor="email" className="sr-only">
-                Email address
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div className="relative">
-              <label htmlFor="password" className="sr-only">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <button
-                type="button"
-                className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? (
-                  <EyeSlashIcon className="h-5 w-5 text-gray-400" />
-                ) : (
-                  <EyeIcon className="h-5 w-5 text-gray-400" />
-                )}
-              </button>
-            </div>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-sky-50 p-4">
+      {/* Background Elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-sky-400/20 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-400/20 rounded-full blur-3xl"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-slate-300/10 rounded-full blur-3xl"></div>
+      </div>
+
+      <div className="relative w-full max-w-md space-y-8 animate-fade-in">
+        {/* Header */}
+        <div className="text-center">
+          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-sky-500 to-sky-600 rounded-2xl flex items-center justify-center shadow-xl shadow-sky-500/25 mb-6">
+            <ShieldCheckIcon className="w-8 h-8 text-white" />
           </div>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">
+            Welcome to <span className="text-gradient">Seren</span>
+          </h1>
+          <p className="text-slate-600 font-medium">
+            Residential Security & Estate Management
+          </p>
+          <div className="flex items-center justify-center mt-3 text-sky-600">
+            <SparklesIcon className="w-4 h-4 mr-1" />
+            <span className="text-sm font-medium">Premium Dashboard</span>
+          </div>
+        </div>
 
-          {error && (
-            <div className="text-red-600 text-sm text-center">{error}</div>
-          )}
+        {/* Login Form */}
+        <div className="card-elegant p-8 space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="email" className="block text-sm font-semibold text-slate-700 mb-2">
+                  Email Address
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  className="input-elegant"
+                  placeholder="Enter your email address"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
 
-          <div>
+              <div>
+                <label htmlFor="password" className="block text-sm font-semibold text-slate-700 mb-2">
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    required
+                    className="input-elegant pr-12"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeSlashIcon className="h-5 w-5" />
+                    ) : (
+                      <EyeIcon className="h-5 w-5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm font-medium">
+                {error}
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={isLoading}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+              className="btn-primary w-full"
             >
-              {isLoading ? 'Signing in...' : 'Sign in'}
+              {isLoading ? (
+                <div className="flex items-center">
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+                  Signing in...
+                </div>
+              ) : (
+                'Sign In to Dashboard'
+              )}
             </button>
-          </div>
+          </form>
 
-          <div className="text-xs text-center text-gray-500">
-            Demo credentials: admin@seren.com / admin123
+          {/* Demo Credentials */}
+          <div className="pt-4 border-t border-slate-200/60">
+            <div className="bg-slate-50/50 rounded-xl p-4">
+              <p className="text-xs font-semibold text-slate-700 mb-2">Demo Access</p>
+              <div className="space-y-1 text-xs text-slate-600">
+                <p><span className="font-medium">Email:</span> admin@seren.com</p>
+                <p><span className="font-medium">Password:</span> admin123</p>
+              </div>
+            </div>
           </div>
-        </form>
+        </div>
+
+        {/* Footer */}
+        <div className="text-center">
+          <p className="text-xs text-slate-500">
+            © 2024 Seren Residential. Premium Estate Management Solutions.
+          </p>
+        </div>
       </div>
     </div>
   )
