@@ -197,6 +197,65 @@ export interface CommunityEvent {
   isAttending: boolean;
 }
 
+// Security Guard types for clock-in/out system
+export interface SecurityGuard {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  badgeNumber: string;
+  estateId: string;
+  role: 'security_guard' | 'head_security' | 'patrol_officer';
+  shift: 'day' | 'night' | 'morning' | 'evening' | 'rotating';
+  status: 'active' | 'inactive' | 'suspended';
+  hireDate: Date;
+  avatar?: string;
+  emergencyContact?: {
+    name: string;
+    phone: string;
+    relationship: string;
+  };
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface GuardShift {
+  id: string;
+  guardId: string;
+  guardName: string;
+  estateId: string;
+  clockInTime: Date;
+  clockOutTime?: Date;
+  shiftType: 'day' | 'night' | 'morning' | 'evening' | 'overtime';
+  status: 'clocked_in' | 'clocked_out' | 'break' | 'patrol';
+  location?: string;
+  notes?: string;
+  supervisorId?: string;
+  duration?: number; // in minutes
+  breaks?: Array<{
+    startTime: Date;
+    endTime?: Date;
+    type: 'lunch' | 'short' | 'emergency';
+    duration?: number;
+  }>;
+  incidents?: string[]; // Array of incident IDs handled during shift
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ShiftSummary {
+  guardId: string;
+  guardName: string;
+  totalHours: number;
+  totalShifts: number;
+  incidentsHandled: number;
+  averageShiftDuration: number;
+  lastClockIn?: Date;
+  lastClockOut?: Date;
+  currentStatus: 'on_duty' | 'off_duty' | 'on_break';
+}
+
 // Dashboard specific types
 export interface DashboardStats {
   totalResidents: number;
@@ -205,6 +264,8 @@ export interface DashboardStats {
   visitorsToday: number;
   securityIncidents: number;
   maintenanceRequests: number;
+  guardsOnDuty: number;
+  totalGuards: number;
 }
 
 // API Response types
@@ -333,7 +394,7 @@ export interface ChatConversation {
 }
 
 // Navigation types for dashboard
-export type TabType = 'dashboard' | 'alerts' | 'complaints' | 'visitors' | 'community' | 'profile' | 'reports' | 'maintenance' | 'chat';
+export type TabType = 'dashboard' | 'alerts' | 'complaints' | 'visitors' | 'community' | 'profile' | 'reports' | 'maintenance' | 'chat' | 'guards';
 
 // Chart and Analytics types
 export interface ChartData {

@@ -66,7 +66,13 @@ import {
   LogOut,
   HelpCircle,
   Info,
-  ArrowLeft
+  ArrowLeft,
+  UserCheck,
+  Clock3,
+  PlayCircle,
+  PauseCircle,
+  CheckCircle2,
+  Badge
 } from 'lucide-react';
 
 // Import aligned types
@@ -79,9 +85,12 @@ import {
   User as UserType,
   Estate,
   SecurityIncident,
-  SecurityMessage
+  SecurityMessage,
+  SecurityGuard,
+  GuardShift
 } from './types';
 import ChatService from './services/ChatService';
+import { GuardService } from './services/GuardService';
 
 // Using imported types from ./types
 
@@ -99,7 +108,9 @@ function App() {
     pendingComplaints: 8,
     visitorsToday: 12,
     securityIncidents: 5,
-    maintenanceRequests: 3
+    maintenanceRequests: 3,
+    guardsOnDuty: 2,
+    totalGuards: 4
   });
 
   const [alerts, setAlerts] = useState<EstateAlert[]>([
@@ -213,6 +224,16 @@ function App() {
   const demoEstate = {
     id: 'estate-demo-001'
   };
+
+  // Guard state - security guard management system
+  const [guards, setGuards] = useState<SecurityGuard[]>([]);
+  const [activeShifts, setActiveShifts] = useState<GuardShift[]>([]);
+  const [selectedGuard, setSelectedGuard] = useState<SecurityGuard | null>(null);
+  const [showClockInModal, setShowClockInModal] = useState(false);
+  const [clockInNotes, setClockInNotes] = useState('');
+  
+  // Initialize GuardService
+  const guardService = GuardService.getInstance();
   
   // Legacy chat data for mock display
   const [conversations, setConversations] = useState<any[]>([
@@ -385,6 +406,93 @@ function App() {
     }
   }, [selectedIncident]);
 
+  // Load guards and active shifts when component mounts
+  useEffect(() => {
+    loadGuards();
+    loadActiveShifts();
+  }, []);
+
+  // Set up real-time listener for active shifts
+  useEffect(() => {
+    const unsubscribe = guardService.subscribeToActiveShifts(demoEstate.id, (shifts) => {
+      setActiveShifts(shifts);
+      // Update stats with current guards on duty
+      setStats(prev => ({
+        ...prev,
+        guardsOnDuty: shifts.length
+      }));
+    });
+    return unsubscribe;
+  }, []);
+
+  // Guard service methods
+  const loadGuards = async () => {
+    try {
+      const guardsData = await guardService.getGuards(demoEstate.id);
+      setGuards(guardsData);
+      setStats(prev => ({
+        ...prev,
+        totalGuards: guardsData.length
+      }));
+    } catch (error) {
+      console.error('Error loading guards:', error);
+    }
+  };
+
+  const loadActiveShifts = async () => {
+    try {
+      const shiftsData = await guardService.getActiveShifts(demoEstate.id);
+      setActiveShifts(shiftsData);
+      setStats(prev => ({
+        ...prev,
+        guardsOnDuty: shiftsData.length
+      }));
+    } catch (error) {
+      console.error('Error loading active shifts:', error);
+    }
+  };
+
+  const handleClockIn = async (guard: SecurityGuard) => {
+    try {
+      const currentShift = await guardService.isGuardClockedIn(guard.id, demoEstate.id);
+      if (currentShift) {
+        alert(`${guard.name} is already clocked in. Please clock out first.`);
+        return;
+      }
+      
+      const shiftId = await guardService.clockIn(
+        guard.id,
+        guard.name,
+        demoEstate.id,
+        guard.shift,
+        'Main Gate',
+        clockInNotes
+      );
+      
+      await loadActiveShifts();
+      setShowClockInModal(false);
+      setClockInNotes('');
+      setSelectedGuard(null);
+      
+      alert(`${guard.name} has been clocked in successfully!`);
+    } catch (error) {
+      console.error('Error clocking in guard:', error);
+      alert('Failed to clock in. Please try again.');
+    }
+  };
+
+  const handleClockOut = async (shift: GuardShift) => {
+    const notes = prompt(`Add notes for ${shift.guardName}'s clock out:`) || '';
+    try {
+      await guardService.clockOut(shift.id, notes);
+      await loadActiveShifts();
+      alert(`${shift.guardName} has been clocked out successfully!`);
+    } catch (error) {
+      console.error('Error clocking out guard:', error);
+      alert('Failed to clock out. Please try again.');
+    }
+  };
+
   // Chat service methods
   const loadIncidents = async () => {
     try {
@@ -497,6 +605,7 @@ function App() {
     { id: 'alerts', label: 'Alerts', icon: AlertTriangle, badge: alerts.filter(a => a.status === 'open').length },
     { id: 'complaints', label: 'Reports', icon: DocumentIcon, badge: complaints.filter(c => c.status === 'pending').length },
     { id: 'visitors', label: 'Visitors', icon: UserPlus },
+    { id: 'guards', label: 'Guards', icon: UserCheck, badge: activeShifts.length },
     { id: 'chat', label: 'Live Chat', icon: MessageSquare, badge: incidents.filter(inc => inc.status === 'open' || inc.status === 'acknowledged').length },
     { id: 'community', label: 'Community', icon: Users },
     { id: 'profile', label: 'Profile', icon: User }
@@ -505,7 +614,7 @@ function App() {
   const renderDashboard = () => (
     <div className="space-y-6">
       {/* Stats Overview */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="glass-card p-4 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-white/40 dark:border-slate-700/40 text-center shadow-lg">
           <div className="w-8 h-8 mx-auto mb-2 rounded-lg bg-blue-500/10 flex items-center justify-center">
             <User className="w-4 h-4 text-blue-500" />
@@ -537,6 +646,14 @@ function App() {
           <p className="text-xl font-bold text-slate-900 dark:text-white mb-1">{stats.visitorsToday}</p>
           <p className="text-slate-600 dark:text-slate-300 text-xs">Visitors</p>
         </div>
+
+        <div className="glass-card p-4 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-white/40 dark:border-slate-700/40 text-center shadow-lg">
+          <div className="w-8 h-8 mx-auto mb-2 rounded-lg bg-violet-500/10 flex items-center justify-center">
+            <UserCheck className="w-4 h-4 text-violet-500" />
+          </div>
+          <p className="text-xl font-bold text-slate-900 dark:text-white mb-1">{stats.guardsOnDuty}/{stats.totalGuards}</p>
+          <p className="text-slate-600 dark:text-slate-300 text-xs">Guards On Duty</p>
+        </div>
       </div>
 
       {/* Quick Actions - Circular Buttons */}
@@ -563,7 +680,7 @@ function App() {
           >
             <div className="w-16 h-16 rounded-full bg-gradient-to-r from-blue-500/10 to-blue-600/10 border-2 border-blue-500/20 flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-lg">
               <DocumentIcon className="w-6 h-6 text-blue-500" />
-            </div>
+              </div>
             <span className="text-xs font-medium text-slate-700 dark:text-slate-300">New Complaint</span>
           </motion.button>
 
@@ -599,15 +716,15 @@ function App() {
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Recent Activity</h3>
           <button className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors duration-200">
             View All
-          </button>
-        </div>
+              </button>
+            </div>
         
         <div className="space-y-3">
           {alerts.slice(0, 3).map((alert) => (
             <div key={alert.id} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-700/50">
               <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
                 <AlertTriangle className="w-4 h-4 text-red-500" />
-              </div>
+          </div>
               <div className="flex-1 min-w-0">
                 <h4 className="text-sm font-medium text-slate-900 dark:text-white truncate">{alert.type.charAt(0).toUpperCase() + alert.type.slice(1)} Alert</h4>
                 <p className="text-slate-600 dark:text-slate-300 text-xs truncate">{alert.description}</p>
@@ -646,20 +763,20 @@ function App() {
                 <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
                   <AlertTriangle className="w-4 h-4 text-red-500" />
                 </div>
-                <div>
+          <div>
                   <h3 className="font-medium text-slate-900 dark:text-white text-sm">{alert.type.charAt(0).toUpperCase() + alert.type.slice(1)} Alert</h3>
                   <p className="text-xs text-slate-600 dark:text-slate-300">Unit {alert.unitNumber}</p>
-                </div>
+          </div>
               </div>
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${getPriorityColor(alert.priority || 'low')}`}>
                   {alert.priority || 'low'}
                 </span>
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${getStatusColor(alert.status)}`}>
                   {alert.status}
                 </span>
-              </div>
             </div>
+              </div>
             
             <p className="text-slate-700 dark:text-slate-300 text-sm mb-3">{alert.description}</p>
             
@@ -684,13 +801,13 @@ function App() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white">Complaints & Issues</h2>
-        <button
+              <button 
           onClick={() => setShowComplaintModal(true)}
           className="px-3 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg text-sm font-medium hover:from-blue-600 hover:to-blue-700 transition-all duration-300 flex items-center gap-2"
-        >
+              >
           <Plus className="w-4 h-4" />
           New Complaint
-        </button>
+              </button>
       </div>
 
       <div className="space-y-3">
@@ -713,9 +830,9 @@ function App() {
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${getStatusColor(complaint.status)}`}>
                   {complaint.status}
                 </span>
-              </div>
             </div>
-            
+          </div>
+          
             <p className="text-slate-700 dark:text-slate-300 text-sm mb-3">{complaint.description}</p>
             
             <div className="flex items-center justify-between">
@@ -723,10 +840,10 @@ function App() {
               <div className="flex items-center gap-2">
                 <button className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors duration-200">
                   <Eye className="w-3 h-3 text-slate-600 dark:text-slate-300" />
-                </button>
+          </button>
                 <button className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors duration-200">
                   <Edit className="w-3 h-3 text-slate-600 dark:text-slate-300" />
-                </button>
+          </button>
               </div>
             </div>
           </div>
@@ -742,7 +859,7 @@ function App() {
         <button className="px-3 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg text-sm font-medium hover:from-emerald-600 hover:to-emerald-700 transition-all duration-300 flex items-center gap-2">
           <Plus className="w-4 h-4" />
           Check-in Visitor
-        </button>
+          </button>
       </div>
 
       <div className="space-y-3">
@@ -753,10 +870,10 @@ function App() {
                 <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
                   <UserPlus className="w-4 h-4 text-emerald-500" />
                 </div>
-                <div>
+          <div>
                   <h3 className="font-medium text-slate-900 dark:text-white text-sm">{visitor.name}</h3>
                   <p className="text-xs text-slate-600 dark:text-slate-300">Host: {visitor.hostResident} • Unit {visitor.hostUnitNumber}</p>
-                </div>
+          </div>
               </div>
               <span className={`text-xs px-2 py-1 rounded-full font-medium ${getStatusColor(visitor.status)}`}>
                 {visitor.status}
@@ -793,10 +910,10 @@ function App() {
               <div className="flex items-center gap-2">
                 <button className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors duration-200">
                   <Eye className="w-3 h-3 text-slate-600 dark:text-slate-300" />
-                </button>
+          </button>
                 <button className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors duration-200">
                   <Edit className="w-3 h-3 text-slate-600 dark:text-slate-300" />
-                </button>
+          </button>
               </div>
             </div>
           </div>
@@ -812,7 +929,7 @@ function App() {
         <button className="px-3 py-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg text-sm font-medium hover:from-purple-600 hover:to-purple-700 transition-all duration-300 flex items-center gap-2">
           <Plus className="w-4 h-4" />
           New Post
-        </button>
+          </button>
       </div>
 
       <div className="glass-card p-4 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-white/40 dark:border-slate-700/40 shadow-lg">
@@ -835,11 +952,11 @@ function App() {
             <button className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors duration-200">
               <ThumbsUp className="w-3 h-3" />
               Like
-            </button>
+          </button>
             <button className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors duration-200">
               <MessageCircle className="w-3 h-3" />
               Comment
-            </button>
+          </button>
             <button className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors duration-200">
               <Share2 className="w-3 h-3" />
               Share
@@ -906,6 +1023,220 @@ function App() {
     </div>
   );
 
+  const renderGuards = () => (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Security Guards</h2>
+        <div className="flex gap-3">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setShowClockInModal(true)}
+            className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-4 py-2 rounded-xl font-medium shadow-lg hover:shadow-xl transition-all"
+          >
+            <PlayCircle className="w-4 h-4 inline mr-2" />
+            Clock In
+          </motion.button>
+        </div>
+      </div>
+
+      {/* Guards On Duty */}
+      <div className="glass-card p-6 rounded-2xl bg-white/80 dark:bg-slate-800/80 border border-white/40 dark:border-slate-700/40 shadow-lg">
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+          <Clock3 className="w-5 h-5 text-emerald-500" />
+          Guards Currently On Duty ({activeShifts.length})
+        </h3>
+        {activeShifts.length === 0 ? (
+          <div className="text-center py-8">
+            <UserCheck className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+            <p className="text-slate-600 dark:text-slate-400">No guards currently on duty</p>
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            {activeShifts.map((shift) => {
+              const duration = Math.floor((Date.now() - shift.clockInTime.getTime()) / (1000 * 60));
+              const hours = Math.floor(duration / 60);
+              const minutes = duration % 60;
+              
+              return (
+                <div key={shift.id} className="flex items-center justify-between p-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/20 flex items-center justify-center">
+                      <Badge className="w-6 h-6 text-emerald-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-slate-900 dark:text-white">{shift.guardName}</h4>
+                      <p className="text-sm text-slate-600 dark:text-slate-400">
+                        Clocked in: {shift.clockInTime.toLocaleTimeString()} • {hours}h {minutes}m ago
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-500">
+                        Location: {shift.location} • Shift: {shift.shiftType}
+                      </p>
+                    </div>
+                  </div>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => handleClockOut(shift)}
+                    className="bg-gradient-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-xl font-medium shadow-lg hover:shadow-xl transition-all"
+                  >
+                    <PauseCircle className="w-4 h-4 inline mr-2" />
+                    Clock Out
+                  </motion.button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* All Guards */}
+      <div className="glass-card p-6 rounded-2xl bg-white/80 dark:bg-slate-800/80 border border-white/40 dark:border-slate-700/40 shadow-lg">
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+          <Users className="w-5 h-5 text-violet-500" />
+          All Security Guards ({guards.length})
+        </h3>
+        <div className="grid gap-4">
+          {guards.map((guard) => {
+            const isOnDuty = activeShifts.some(shift => shift.guardId === guard.id);
+            
+            return (
+              <div key={guard.id} className="flex items-center justify-between p-4 rounded-xl bg-slate-50/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <img 
+                      src={guard.avatar || `https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face`}
+                      alt={guard.name}
+                      className="w-12 h-12 rounded-full object-cover"
+                    />
+                    {isOnDuty && (
+                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-800"></div>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                      {guard.name}
+                      {isOnDuty && <span className="text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full">ON DUTY</span>}
+                    </h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      Badge: {guard.badgeNumber} • {guard.role.replace('_', ' ')}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-500">
+                      Shift: {guard.shift} • {guard.phone}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {!isOnDuty && (
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => {
+                        setSelectedGuard(guard);
+                        setShowClockInModal(true);
+                      }}
+                      className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-3 py-2 rounded-lg font-medium shadow-lg hover:shadow-xl transition-all"
+                    >
+                      <PlayCircle className="w-4 h-4 inline mr-1" />
+                      Clock In
+                    </motion.button>
+                  )}
+                  <span className={`px-3 py-2 rounded-lg text-xs font-medium ${
+                    guard.status === 'active' 
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400'
+                      : 'bg-slate-100 text-slate-800 dark:bg-slate-900/20 dark:text-slate-400'
+                  }`}>
+                    {guard.status}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+          </div>
+          
+      {/* Clock In Modal */}
+      <AnimatePresence>
+        {showClockInModal && (
+            <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setShowClockInModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white dark:bg-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl border border-white/40 dark:border-slate-700/40"
+            >
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
+                Clock In {selectedGuard ? selectedGuard.name : 'Guard'}
+              </h3>
+              
+              {!selectedGuard && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Select Guard
+                  </label>
+                  <select 
+                    className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    onChange={(e) => {
+                      const guard = guards.find(g => g.id === e.target.value);
+                      setSelectedGuard(guard || null);
+                    }}
+                  >
+                    <option value="">Choose a guard...</option>
+                    {guards.filter(guard => !activeShifts.some(shift => shift.guardId === guard.id)).map(guard => (
+                      <option key={guard.id} value={guard.id}>{guard.name} - {guard.badgeNumber}</option>
+                    ))}
+                  </select>
+              </div>
+              )}
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Notes (Optional)
+                </label>
+                <textarea
+                  value={clockInNotes}
+                  onChange={(e) => setClockInNotes(e.target.value)}
+                  placeholder="Add any notes about this shift..."
+                  className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white resize-none"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowClockInModal(false);
+                    setSelectedGuard(null);
+                    setClockInNotes('');
+                  }}
+                  className="flex-1 px-4 py-3 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => selectedGuard && handleClockIn(selectedGuard)}
+                  disabled={!selectedGuard}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-medium hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <PlayCircle className="w-4 h-4 inline mr-2" />
+                  Clock In
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+
   const renderChat = () => (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-250px)]">
@@ -930,8 +1261,8 @@ function App() {
               >
                 <Plus className="w-4 h-4" />
               </motion.button>
-            </div>
-            
+              </div>
+          
             <div className="flex-1 overflow-y-auto space-y-2">
               {incidents.length === 0 ? (
                 <div className="text-center py-8">
@@ -943,7 +1274,7 @@ function App() {
                 incidents.map((incident) => {
                   const Icon = getIncidentIcon(incident.type);
                   return (
-                    <motion.div
+            <motion.div
                       key={incident.id}
                       whileHover={{ scale: 1.02 }}
                       onClick={() => setSelectedIncident(incident)}
@@ -957,7 +1288,7 @@ function App() {
                         <div className="flex items-center gap-2">
                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${getIncidentPriorityColor(incident.priority).replace('text-', 'bg-').replace('dark:bg-', '').split(' ')[0].replace('bg-', 'bg-') + '/10'}`}>
                             <Icon className={`w-4 h-4 ${getIncidentPriorityColor(incident.priority).split(' ')[0]}`} />
-                          </div>
+              </div>
                           <div className="flex-1 min-w-0">
                             <h3 className="font-medium text-slate-900 dark:text-white text-sm truncate">
                               {incident.title}
@@ -965,7 +1296,7 @@ function App() {
                             <p className="text-xs text-slate-600 dark:text-slate-300">
                               {incident.type.replace('_', ' ')} • {incident.assignedOfficer || 'Unassigned'}
                             </p>
-                          </div>
+          </div>
                         </div>
                       </div>
                       
@@ -988,7 +1319,7 @@ function App() {
                           </p>
                         </div>
                       )}
-                    </motion.div>
+        </motion.div>
                   );
                 })
               )}
@@ -1016,7 +1347,7 @@ function App() {
                       {React.createElement(getIncidentIcon(selectedIncident.type), {
                         className: `w-5 h-5 ${getIncidentPriorityColor(selectedIncident.priority).split(' ')[0]}`
                       })}
-                    </div>
+              </div>
                     <div>
                       <h3 className="font-medium text-slate-900 dark:text-white">
                         {selectedIncident.title}
@@ -1050,7 +1381,7 @@ function App() {
                           <span className="text-white text-xs font-medium">
                             {message.senderName.charAt(0)}
                           </span>
-                        </div>
+              </div>
                       )}
                       <div className={`flex-1 ${message.senderId === demoUser.uid ? 'flex justify-end' : ''}`}>
                         <div className={`rounded-lg p-3 max-w-xs ${
@@ -1116,7 +1447,7 @@ function App() {
                   >
                     <Send className="w-4 h-4" />
                   </motion.button>
-                </div>
+              </div>
               </>
             ) : (
               <div className="flex-1 flex items-center justify-center">
@@ -1124,7 +1455,7 @@ function App() {
                   <Shield className="w-16 h-16 text-slate-400 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Select an incident</h3>
                   <p className="text-slate-600 dark:text-slate-300">Choose an incident from the list to start the conversation</p>
-                </div>
+          </div>
               </div>
             )}
           </div>
@@ -1143,6 +1474,8 @@ function App() {
         return renderComplaints();
       case 'visitors':
         return renderVisitors();
+      case 'guards':
+        return renderGuards();
       case 'chat':
         return renderChat();
       case 'community':
@@ -1186,20 +1519,20 @@ function App() {
               >
                     <Moon className="w-4 h-4 text-slate-600 dark:text-slate-300" />
               </button>
-            </div>
+                    </div>
           </div>
           
-          <div>
+                    <div>
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-200 bg-clip-text text-transparent mb-1">
               {getGreeting()}, Admin
             </h1>
                 <h2 className="text-sm text-slate-600 dark:text-slate-300 font-medium">
               Seren Residential Estate Management
             </h2>
-              </div>
-            </div>
-          </div>
-        </motion.div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
 
         {/* Unified Navigation Bar */}
         <motion.div
