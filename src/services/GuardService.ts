@@ -69,7 +69,7 @@ export class GuardService {
     guardId: string,
     guardName: string,
     estateId: string,
-    shiftType: 'day' | 'night' | 'morning' | 'evening' | 'overtime' = 'day',
+    shiftType: 'day' | 'night' | 'morning' | 'evening' | 'overtime' | 'rotating' = 'day',
     location?: string,
     notes?: string
   ): Promise<string> {
@@ -421,8 +421,8 @@ export class GuardService {
         estateId,
         clockInTime: new Date(Date.now() - 24 * 60 * 60 * 1000), // Yesterday
         clockOutTime: new Date(Date.now() - 16 * 60 * 60 * 1000), // 16 hours ago
-        shiftType: 'day',
-        status: 'clocked_out',
+        shiftType: 'day' as const,
+        status: 'clocked_out' as const,
         location: 'Main Gate',
         notes: 'Regular shift completed',
         duration: 480, // 8 hours
@@ -431,7 +431,7 @@ export class GuardService {
           {
             startTime: new Date(Date.now() - 20 * 60 * 60 * 1000),
             endTime: new Date(Date.now() - 19 * 60 * 60 * 1000),
-            type: 'lunch',
+            type: 'lunch' as const,
             duration: 60
           }
         ],
@@ -445,7 +445,7 @@ export class GuardService {
     guardId: string,
     guardName: string,
     estateId: string,
-    shiftType: 'day' | 'night' | 'morning' | 'evening' | 'overtime',
+    shiftType: 'day' | 'night' | 'morning' | 'evening' | 'overtime' | 'rotating',
     location?: string,
     notes?: string
   ): Promise<string> {

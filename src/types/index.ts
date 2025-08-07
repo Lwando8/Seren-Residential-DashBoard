@@ -206,7 +206,7 @@ export interface SecurityGuard {
   badgeNumber: string;
   estateId: string;
   role: 'security_guard' | 'head_security' | 'patrol_officer';
-  shift: 'day' | 'night' | 'morning' | 'evening' | 'rotating';
+  shift: 'day' | 'night' | 'morning' | 'evening' | 'rotating' | 'overtime';
   status: 'active' | 'inactive' | 'suspended';
   hireDate: Date;
   avatar?: string;
