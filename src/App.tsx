@@ -91,6 +91,8 @@ import {
 } from './types';
 import ChatService from './services/ChatService';
 import { GuardService } from './services/GuardService';
+import { CommunityAnnouncement, CommunityClub, CommunityEvent, Venue } from './types';
+import CommunityService from './services/CommunityService';
 
 // Using imported types from ./types
 
@@ -101,6 +103,25 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [showComplaintModal, setShowComplaintModal] = useState(false);
+  // Community state
+  const [announcements, setAnnouncements] = useState<CommunityAnnouncement[]>([]);
+  const [pendingClubs, setPendingClubs] = useState<CommunityClub[]>([]);
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [announcementTitle, setAnnouncementTitle] = useState('');
+  const [announcementContent, setAnnouncementContent] = useState('');
+  const [announcementAudience, setAnnouncementAudience] = useState<'all' | 'residents' | 'guards'>('all');
+  const [announcementPinned, setAnnouncementPinned] = useState(false);
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [events, setEvents] = useState<CommunityEvent[]>([]);
+  const [newEvent, setNewEvent] = useState<{
+    title: string;
+    description: string;
+    clubId: string;
+    venueId: string;
+    startAt: string; // ISO string from input
+    endAt: string;   // ISO string from input
+  }>({ title: '', description: '', clubId: '', venueId: '', startAt: '', endAt: '' });
+  const [eventError, setEventError] = useState<string>('');
 
   const [stats, setStats] = useState<DashboardStats>({
     totalResidents: 156,
@@ -214,6 +235,7 @@ function App() {
   
   // Initialize ChatService
   const chatService = ChatService.getInstance();
+  const communityService = CommunityService.getInstance();
 
   // Demo user and estate data for chat functionality
   const demoUser = {
@@ -394,6 +416,37 @@ function App() {
     loadIncidents();
   }, []);
 
+  // Load community announcements and pending clubs
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    (async () => {
+      try {
+        const list = await communityService.getAnnouncements(demoEstate.id);
+        setAnnouncements(list);
+        unsubscribe = communityService.subscribeAnnouncements(demoEstate.id, setAnnouncements);
+      } catch (error) {
+        console.error('Error loading announcements:', error);
+      }
+      try {
+        const clubs = await communityService.getPendingClubs(demoEstate.id);
+        setPendingClubs(clubs);
+      } catch (error) {
+        console.error('Error loading pending clubs:', error);
+      }
+      try {
+        const v = await communityService.listVenues(demoEstate.id);
+        setVenues(v);
+        const evts = await communityService.listEvents(demoEstate.id);
+        setEvents(evts);
+      } catch (error) {
+        console.error('Error loading venues/events:', error);
+      }
+    })();
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
   // Load messages when incident is selected
   useEffect(() => {
     if (selectedIncident) {
@@ -554,6 +607,86 @@ function App() {
     }
   };
 
+  // Community actions
+  const handlePostAnnouncement = async () => {
+    if (!announcementTitle.trim() || !announcementContent.trim()) return;
+    try {
+      await communityService.postAnnouncement(demoEstate.id, {
+        title: announcementTitle.trim(),
+        content: announcementContent.trim(),
+        audience: announcementAudience,
+        createdById: 'mgmt-1',
+        createdByName: 'Estate Management',
+        createdByRole: 'management',
+        pinned: announcementPinned,
+      } as any);
+      setAnnouncementTitle('');
+      setAnnouncementContent('');
+      setAnnouncementPinned(false);
+      setShowAnnouncementModal(false);
+      const list = await communityService.getAnnouncements(demoEstate.id);
+      setAnnouncements(list);
+    } catch (error) {
+      console.error('Error posting announcement:', error);
+    }
+  };
+
+  const handleApproveClub = async (clubId: string) => {
+    try {
+      await communityService.approveClub(clubId, 'mgmt-1');
+      const clubs = await communityService.getPendingClubs(demoEstate.id);
+      setPendingClubs(clubs);
+    } catch (error) {
+      console.error('Error approving club:', error);
+    }
+  };
+
+  const handleRejectClub = async (clubId: string) => {
+    try {
+      await communityService.rejectClub(clubId, 'mgmt-1');
+      const clubs = await communityService.getPendingClubs(demoEstate.id);
+      setPendingClubs(clubs);
+    } catch (error) {
+      console.error('Error rejecting club:', error);
+    }
+  };
+
+  const handleCreateEvent = async () => {
+    setEventError('');
+    if (!newEvent.title.trim() || !newEvent.venueId || !newEvent.startAt || !newEvent.endAt) {
+      setEventError('Please fill in all required fields.');
+      return;
+    }
+    const start = new Date(newEvent.startAt);
+    const end = new Date(newEvent.endAt);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) {
+      setEventError('Invalid time range.');
+      return;
+    }
+    const result = await communityService.createEvent(demoEstate.id, {
+      estateId: demoEstate.id, // ignored by service
+      clubId: newEvent.clubId || 'independent',
+      title: newEvent.title.trim(),
+      description: newEvent.description.trim(),
+      category: 'social',
+      organizer: 'Estate Management',
+      attendees: 0,
+      venueId: newEvent.venueId,
+      venueName: venues.find(v => v.id === newEvent.venueId)?.name || 'Venue',
+      startAt: start,
+      endAt: end,
+    } as any);
+    if (result.conflict) {
+      const names = result.conflict.conflictingEvents.map(e => `${e.title} (${e.venueName})`).join(', ');
+      setEventError(`Scheduling conflict with: ${names}`);
+      return;
+    }
+    // Refresh events and reset form
+    const evts = await communityService.listEvents(demoEstate.id);
+    setEvents(evts);
+    setNewEvent({ title: '', description: '', clubId: '', venueId: '', startAt: '', endAt: '' });
+  };
+
   const formatTimestamp = (date: Date) => {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
@@ -607,7 +740,7 @@ function App() {
     { id: 'visitors', label: 'Visitors', icon: UserPlus },
     { id: 'guards', label: 'Guards', icon: UserCheck, badge: activeShifts.length },
     { id: 'chat', label: 'Live Chat', icon: MessageSquare, badge: incidents.filter(inc => inc.status === 'open' || inc.status === 'acknowledged').length },
-    { id: 'community', label: 'Community', icon: Users },
+    { id: 'community', label: 'Community', icon: Users, badge: pendingClubs.length },
     { id: 'profile', label: 'Profile', icon: User }
   ];
 
@@ -926,43 +1059,241 @@ function App() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white">Community Hub</h2>
-        <button className="px-3 py-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg text-sm font-medium hover:from-purple-600 hover:to-purple-700 transition-all duration-300 flex items-center gap-2">
+        <button
+          onClick={() => setShowAnnouncementModal(true)}
+          className="px-3 py-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg text-sm font-medium hover:from-purple-600 hover:to-purple-700 transition-all duration-300 flex items-center gap-2"
+        >
           <Plus className="w-4 h-4" />
-          New Post
-          </button>
+          New Announcement
+        </button>
       </div>
 
-      <div className="glass-card p-4 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-white/40 dark:border-slate-700/40 shadow-lg">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">
-            <User className="w-5 h-5 text-white" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-medium text-slate-900 dark:text-white text-sm">Community Announcement</h3>
-            <p className="text-xs text-slate-600 dark:text-slate-300">Welcome to Seren Residential Estate!</p>
-          </div>
-        </div>
-        
-        <p className="text-slate-700 dark:text-slate-300 text-sm mb-4">
-          We're excited to welcome all residents to our beautiful estate. Please take a moment to familiarize yourself with our community guidelines and amenities.
-        </p>
-        
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors duration-200">
-              <ThumbsUp className="w-3 h-3" />
-              Like
+      {/* Announcement Composer Modal */}
+      <AnimatePresence>
+        {showAnnouncementModal && (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setShowAnnouncementModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-slate-800 rounded-2xl p-6 w-full max-w-lg shadow-2xl border border-white/40 dark:border-slate-700/40"
+            >
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Post Announcement</h3>
+              <div className="space-y-3">
+                <input
+                  value={announcementTitle}
+                  onChange={(e) => setAnnouncementTitle(e.target.value)}
+                  placeholder="Title"
+                  className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                />
+                <textarea
+                  value={announcementContent}
+                  onChange={(e) => setAnnouncementContent(e.target.value)}
+                  placeholder="Write your announcement..."
+                  rows={4}
+                  className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                />
+                <div className="flex gap-2 items-center">
+                  <select
+                    value={announcementAudience}
+                    onChange={(e) => setAnnouncementAudience(e.target.value as any)}
+                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                  >
+                    <option value="all">All</option>
+                    <option value="residents">Residents</option>
+                    <option value="guards">Guards</option>
+                  </select>
+                  <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                    <input type="checkbox" checked={announcementPinned} onChange={(e) => setAnnouncementPinned(e.target.checked)} />
+                    Pin
+                  </label>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setShowAnnouncementModal(false)}
+                    className="flex-1 px-4 py-3 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+                  >
+                    Cancel
           </button>
-            <button className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors duration-200">
-              <MessageCircle className="w-3 h-3" />
-              Comment
+                  <button
+                    onClick={handlePostAnnouncement}
+                    disabled={!announcementTitle.trim() || !announcementContent.trim()}
+                    className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl font-medium hover:shadow-xl transition-all disabled:opacity-50"
+                  >
+                    Post
           </button>
-            <button className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors duration-200">
-              <Share2 className="w-3 h-3" />
-              Share
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Announcements List */}
+      <div className="space-y-3">
+        {announcements.length === 0 ? (
+          <div className="glass-card p-6 rounded-2xl bg-white/80 dark:bg-slate-800/80 border border-white/40 dark:border-slate-700/40 text-center">
+            <p className="text-slate-600 dark:text-slate-300 text-sm">No announcements yet.</p>
+          </div>
+        ) : (
+          announcements.map((a) => (
+            <div key={a.id} className="glass-card p-4 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-white/40 dark:border-slate-700/40 shadow-lg">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full ${a.pinned ? 'bg-yellow-500' : 'bg-indigo-500'} flex items-center justify-center`}>
+                    <Megaphone className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-slate-900 dark:text-white text-sm">{a.title}</h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-300">{a.createdByName} • {a.audience}</p>
+                  </div>
+                </div>
+                {a.pinned && (
+                  <span className="text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400 px-2 py-1 rounded-full">Pinned</span>
+                )}
+              </div>
+              <p className="text-slate-700 dark:text-slate-300 text-sm mb-3">{a.content}</p>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <button className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors duration-200">
+                    <ThumbsUp className="w-3 h-3" />
+                    Like
+          </button>
+                  <button className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors duration-200">
+                    <MessageCircle className="w-3 h-3" />
+                    Comment
+          </button>
+                  <button className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors duration-200">
+                    <Share2 className="w-3 h-3" />
+                    Share
+          </button>
+                </div>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{formatTimestamp(a.createdAt)}</span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Pending Clubs for Approval */}
+      <div className="space-y-3">
+        <h3 className="text-base font-semibold text-slate-900 dark:text-white">Pending Clubs for Approval ({pendingClubs.length})</h3>
+        {pendingClubs.length === 0 ? (
+          <div className="glass-card p-4 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-white/40 dark:border-slate-700/40 text-sm text-slate-600 dark:text-slate-300">
+            No pending clubs at the moment.
+          </div>
+        ) : (
+          pendingClubs.map((club) => (
+            <div key={club.id} className="flex items-center justify-between p-4 rounded-xl bg-slate-50/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
+                  <GroupIcon className="w-5 h-5 text-purple-500" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-slate-900 dark:text-white">{club.name}</h4>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">{club.category} • {club.members} members • by {club.createdByName}</p>
+                  <p className="text-sm text-slate-700 dark:text-slate-300 mt-1">{club.description}</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleRejectClub(club.id)}
+                  className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-medium"
+                >
+                  <X className="w-4 h-4 inline mr-1" /> Reject
+                </button>
+                <button
+                  onClick={() => handleApproveClub(club.id)}
+                  className="px-3 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-xs font-medium shadow"
+                >
+                  <CheckCircle2 className="w-4 h-4 inline mr-1" /> Approve
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Event Scheduler (conflict-aware) */}
+      <div className="space-y-3">
+        <h3 className="text-base font-semibold text-slate-900 dark:text-white">Schedule Club Event</h3>
+        <div className="glass-card p-4 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-white/40 dark:border-slate-700/40 shadow-lg space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <input
+              value={newEvent.title}
+              onChange={(e) => setNewEvent(prev => ({ ...prev, title: e.target.value }))}
+              placeholder="Event title"
+              className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+            />
+            <select
+              value={newEvent.venueId}
+              onChange={(e) => setNewEvent(prev => ({ ...prev, venueId: e.target.value }))}
+              className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+            >
+              <option value="">Select venue</option>
+              {venues.map(v => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </select>
+            <input
+              type="datetime-local"
+              value={newEvent.startAt}
+              onChange={(e) => setNewEvent(prev => ({ ...prev, startAt: e.target.value }))}
+              className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+            />
+            <input
+              type="datetime-local"
+              value={newEvent.endAt}
+              onChange={(e) => setNewEvent(prev => ({ ...prev, endAt: e.target.value }))}
+              className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+            />
+          </div>
+          <textarea
+            value={newEvent.description}
+            onChange={(e) => setNewEvent(prev => ({ ...prev, description: e.target.value }))}
+            placeholder="Description (optional)"
+            rows={3}
+            className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+          />
+          {eventError && (
+            <div className="text-xs text-red-600 dark:text-red-400">{eventError}</div>
+          )}
+          <div className="flex justify-end">
+            <button
+              onClick={handleCreateEvent}
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-sm font-medium"
+            >
+              Create Event
             </button>
           </div>
-          <span className="text-xs text-slate-500 dark:text-slate-400">2 hours ago</span>
+        </div>
+
+        {/* Upcoming events list */}
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Upcoming Events</h4>
+          {events.length === 0 ? (
+            <div className="text-sm text-slate-600 dark:text-slate-300">No events scheduled.</div>
+          ) : (
+            events
+              .slice()
+              .sort((a, b) => a.startAt.getTime() - b.startAt.getTime())
+              .map(ev => (
+              <div key={ev.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                <div>
+                  <div className="text-sm font-medium text-slate-900 dark:text-white">{ev.title}</div>
+                  <div className="text-xs text-slate-600 dark:text-slate-400">{ev.venueName} • {ev.startAt.toLocaleString()} - {ev.endAt.toLocaleTimeString()}</div>
+                </div>
+                <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-2 py-1 rounded-full">{ev.category}</span>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

@@ -173,28 +173,57 @@ export interface InfrastructureReport {
 // Community types aligned with mobile app
 export interface CommunityClub {
   id: string;
+  estateId: string;
   name: string;
   description: string;
   members: number;
   category: 'fitness' | 'social' | 'hobby' | 'family' | 'business';
   icon: string;
   organizer: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: Date;
+  approvalByUserId?: string;
+  approvalNotes?: string;
   nextMeeting?: string;
+}
+
+export interface CommunityAnnouncement {
+  id: string;
+  estateId: string;
+  title: string;
+  content: string;
+  audience: 'all' | 'residents' | 'guards';
+  createdById: string;
+  createdByName: string;
+  createdByRole: 'management' | 'security';
+  createdAt: Date;
+  pinned?: boolean;
 }
 
 export interface CommunityEvent {
   id: string;
+  estateId: string;
+  clubId: string;
   title: string;
   description: string;
-  date: string;
-  time: string;
-  location: string;
+  category: 'fitness' | 'social' | 'hobby' | 'family' | 'business';
   organizer: string;
   attendees: number;
   maxAttendees?: number;
-  category: 'fitness' | 'social' | 'hobby' | 'family' | 'business';
-  clubId?: string;
-  isAttending: boolean;
+  venueId: string;
+  venueName: string;
+  startAt: Date;
+  endAt: Date;
+  isAttending?: boolean;
+}
+
+export interface Venue {
+  id: string;
+  name: string;
+  location?: string;
+  capacity?: number;
 }
 
 // Security Guard types for clock-in/out system
